@@ -112,7 +112,7 @@ public final class AutoInstallApk {
                                 Thread t = new Thread(new Runnable() {
                                     @Override
                                     public void run() {
-                                        waitAndInstall(finalName, fcl);
+                                        waitAndInstall(finalName, fcl, mimeFromName(finalName));
                                     }
                                 });
                                 t.setDaemon(true);
@@ -178,7 +178,7 @@ public final class AutoInstallApk {
                                 Thread t = new Thread(new Runnable() {
                                     @Override
                                     public void run() {
-                                        waitAndInstall(finalName, fcl);
+                                        waitAndInstall(finalName, fcl, mimeFromName(finalName));
                                     }
                                 });
                                 t.setDaemon(true);
@@ -292,7 +292,7 @@ public final class AutoInstallApk {
                                 Thread t = new Thread(new Runnable() {
                                     @Override
                                     public void run() {
-                                        waitAndInstall(finalName, fcl);
+                                        waitAndInstall(finalName, fcl, mimeFromName(finalName));
                                     }
                                 });
                                 t.setDaemon(true);
@@ -319,11 +319,18 @@ public final class AutoInstallApk {
     // 每 500ms 查一次。
     // ------------------------------------------------------------------
     private static void waitAndInstall(final String fileName, final ClassLoader cl) {
+        waitAndInstall(fileName, cl, null);
+    }
+
+    /** v2.2.1: 支持 MIME 参数(扩展类型自动打开); mime 为 null 时按 APK 处理 */
+    private static void waitAndInstall(final String fileName, final ClassLoader cl,
+                                       final String mimeOverride) {
         // 路径可能是 content://(MediaStore/FileProvider), 直接打开
         if (fileName != null && fileName.startsWith("content://")) {
             try {
                 Intent intent = new Intent(Intent.ACTION_VIEW);
-                intent.setDataAndType(Uri.parse(fileName), APK_MIME);
+                intent.setDataAndType(Uri.parse(fileName),
+                        mimeOverride != null ? mimeOverride : APK_MIME);
                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 launchInstaller(fileName, intent, cl);
@@ -659,7 +666,7 @@ public final class AutoInstallApk {
                                 String mime = tryStringField(item, "j0", "f0");
                                 if (!OverwriteAndAutoOpen.shouldAutoOpen(mime, name)) return;
                                 XposedBridge.log(HookEntry.TAG + ": [152] apk download completed: " + name);
-                                installApk152(path, name, lpparam.classLoader);
+                                installApk152(path, name, mime, lpparam.classLoader);
                             } catch (Throwable t) {
                                 XposedBridge.log(HookEntry.TAG + ": [152] install hook error -> " + t);
                             }
@@ -684,9 +691,41 @@ public final class AutoInstallApk {
         return null;
     }
 
-    private static void installApk152(String path, String name, ClassLoader cl) {
-        // 复用 145 已有解析/去重/安装链(支持 content:// 与绝对路径)
-        waitAndInstall(path != null ? path : name, cl);
+    private static void installApk152(String path, String name, String mime, ClassLoader cl) {
+        // 复用 145 已有解析/去重/安装链; mime 透传(扩展类型用)
+        waitAndInstall(path != null ? path : name, cl, mime);
     }
 
+
+    /** v2.2.1: 按文件名推断 MIME(用于扩展类型自动打开) */
+    private static String mimeFromName(String name) {
+        if (name == null) return null;
+        String n = name.toLowerCase();
+        if (n.endsWith(".pdf")) return "application/pdf";
+        if (n.endsWith(".zip")) return "application/zip";
+        if (n.endsWith(".7z")) return "application/x-7z-compressed";
+        if (n.endsWith(".rar")) return "application/x-rar-compressed";
+        if (n.endsWith(".doc")) return "application/msword";
+        if (n.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        if (n.endsWith(".xls")) return "application/vnd.ms-excel";
+        if (n.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        if (n.endsWith(".ppt")) return "application/vnd.ms-powerpoint";
+        if (n.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+        if (n.endsWith(".txt") || n.endsWith(".md") || n.endsWith(".log")) return "text/plain";
+        if (n.endsWith(".png")) return "image/png";
+        if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "image/jpeg";
+        if (n.endsWith(".gif")) return "image/gif";
+        if (n.endsWith(".webp")) return "image/webp";
+        if (n.endsWith(".mp4")) return "video/mp4";
+        if (n.endsWith(".mkv")) return "video/x-matroska";
+        if (n.endsWith(".webm")) return "video/webm";
+        if (n.endsWith(".mp3")) return "audio/mpeg";
+        if (n.endsWith(".flac")) return "audio/flac";
+        if (n.endsWith(".wav")) return "audio/wav";
+        if (n.endsWith(".ogg")) return "audio/ogg";
+        if (n.endsWith(".m4a")) return "audio/mp4";
+        if (n.endsWith(".epub")) return "application/epub+zip";
+        if (n.endsWith(".mobi")) return "application/x-mobipocket-ebook";
+        return null;
+    }
 }

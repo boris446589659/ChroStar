@@ -40,17 +40,34 @@ public final class LocationAndDiagnostics {
         try {
             Class<?> prefService = XposedHelpers.findClass(
                     "org.chromium.components.prefs.PrefService", lpparam.classLoader);
-            // v2.2.0 修正: PrefService 无公开 getBoolean — 145/152 均为混淆名 b(String)
-            // (方法体 N.ZJO(33, ptr, str), ZJ 前缀=boolean 返回, 与 f(String,boolean)=setBoolean 对称)
-            XposedBridge.hookAllMethods(prefService, "b", new XC_MethodHook() {
+            // v2.2.1 修正: 实测 pref key 两个:
+            //   手机版: "download.prompt_for_download" (boolean, 走 b(String))
+            //   电脑式 fork: "download.prompt_for_download_android" (int, 走 c(String))
+            // c(String) 方法体 = N.IJO(6, ptr, str) 返回 int; 0 = 不弹窗
+            XC_MethodHook booleanHook = new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     try {
                         Object key = param.args.length > 0 ? param.args[0] : null;
                         if (key instanceof String
-                                && ((String) key).contains("prompt_for_download")) {
+                                && "download.prompt_for_download".equals(key)) {
                             param.setResult(Boolean.FALSE);
-                            report("location prompt pref forced false");
+                            report("location prompt(b) forced false");
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+            };
+            XposedBridge.hookAllMethods(prefService, "b", booleanHook);
+            XposedBridge.hookAllMethods(prefService, "c", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        Object key = param.args.length > 0 ? param.args[0] : null;
+                        if (key instanceof String
+                                && "download.prompt_for_download_android".equals(key)) {
+                            param.setResult(Integer.valueOf(0));
+                            report("location prompt_android(c) forced 0");
                         }
                     } catch (Throwable ignored) {
                     }
