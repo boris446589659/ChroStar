@@ -10,3 +10,6 @@
 
 # 反射字符串引用的类都在目标应用(Chrome)中，不在本 APK 内，无需 keep
 # miuix/compose 自带 consumer rules，AGP 会自动应用
+
+# v2.1.0: Chrome152 符号表常量与 matches 反射被 R8 误裁
+-keep class io.github.ylw6669.chrostar.Chrome152 { *; }

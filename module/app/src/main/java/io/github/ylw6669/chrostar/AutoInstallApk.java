@@ -57,6 +57,10 @@ public final class AutoInstallApk {
 
     /** 安装 hook(主进程) */
     public static void hook(XC_LoadPackage.LoadPackageParam lpparam) {
+        if ("chrome152".equals(HookEntry.engineVersion)) {
+            hook152(lpparam);
+            return; // 152 短名(c9o/zkg)不同, 独立路径
+        }
         hookCompletedNotification(lpparam);
         hookOfflineItemCompletePath(lpparam);
         hookOpenDownloadEntry(lpparam);
@@ -620,4 +624,67 @@ public final class AutoInstallApk {
             XposedBridge.log(HookEntry.TAG + ": open apk installer failed -> " + t);
         }
     }
+
+    // ------------------------------------------------------------------
+    // v2.1.0: Chrome 152 专用安装路径。
+    // 语义锚点: ia8.d(OfflineItem,boolean,boolean,boolean) 同 145 je7.d —
+    // 完成态(offlineItem.q0==2)时从 OfflineItem 拿路径/文件名执行安装逻辑。
+    // OfflineItem 152 字段: q0=state, 其余路径/名字段名经 DownloadInfo 转换确认后补;
+    // 本实现仅对 APK( mime 判定 via OfflineItem 兜底字段) 触发, 字段缺失时安全跳过。
+    // ------------------------------------------------------------------
+    private static void hook152(XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            Class<?> ia8 = XposedHelpers.findClass("ia8", lpparam.classLoader);
+            Class<?> offlineItemCls = XposedHelpers.findClass(CLS_OFFLINE_ITEM,
+                    lpparam.classLoader);
+            XposedHelpers.findAndHookMethod(ia8, "d", offlineItemCls,
+                    boolean.class, boolean.class, boolean.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            try {
+                                Object item = param.args[0];
+                                if (item == null) return;
+                                int state = XposedHelpers.getIntField(item,
+                                        "chrome152".equals(HookEntry.engineVersion) ? "q0" : "m0");
+                                if (state != 2) return; // 只处理完成态
+                                if (!HookEntry.readPrefBoolean(HookEntry.KEY_AUTO_INSTALL_APK, true)) {
+                                    return;
+                                }
+                                // 152: OfflineItem 路径/名字段名变化, 用通用反射尝试常见字段
+                                String path = tryStringField(item, "P", "Q", "R", "S", "U", "W");
+                                String name = tryStringField(item, "e0", "T", "f0", "U");
+                                String mime = tryStringField(item, "f0", "c0", "d0");
+                                if (!HookEntry.isApk(mime, name)) return;
+                                XposedBridge.log(HookEntry.TAG + ": [152] apk download completed: " + name);
+                                installApk152(path, name, lpparam.classLoader);
+                            } catch (Throwable t) {
+                                XposedBridge.log(HookEntry.TAG + ": [152] install hook error -> " + t);
+                            }
+                        }
+                    });
+            XposedBridge.log(HookEntry.TAG + ": [152] hooked ia8.d (auto-install path)");
+        } catch (Throwable t) {
+            XposedBridge.log(HookEntry.TAG + ": [152] hook ia8 failed -> " + t);
+        }
+    }
+
+    private static String tryStringField(Object obj, String... names) {
+        for (String n : names) {
+            try {
+                Object v = XposedHelpers.getObjectField(obj, n);
+                if (v instanceof String && !((String) v).isEmpty()) {
+                    return (String) v;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static void installApk152(String path, String name, ClassLoader cl) {
+        // 复用 145 已有解析/去重/安装链(支持 content:// 与绝对路径)
+        waitAndInstall(path != null ? path : name, cl);
+    }
+
 }

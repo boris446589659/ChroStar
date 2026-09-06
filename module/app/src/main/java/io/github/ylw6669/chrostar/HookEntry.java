@@ -41,6 +41,9 @@ public class HookEntry implements IXposedHookLoadPackage {
     /** Chrome native 桥类(J.N), DownloadSafetyBypass/HomeCleaner 共用 */
     public static final String CLS_J_N = "J.N";
 
+    /** 引擎版本绑定: chrome145 / chrome152, handleLoadPackage 时判定一次 */
+    public static volatile String engineVersion = "unknown";
+
     public static final String KEY_CLEAR_TABS = "clear_tabs";
     public static final String KEY_BYPASS_DANGEROUS = "bypass_dangerous";
     public static final String KEY_BYPASS_INSECURE = "bypass_insecure";
@@ -71,6 +74,22 @@ public class HookEntry implements IXposedHookLoadPackage {
         if (lpparam.processName != null && !lpparam.processName.equals(lpparam.packageName)) {
             return;
         }
+        engineVersion = detectEngineVersion(lpparam);
+        XposedBridge.log(TAG + ": engine=" + engineVersion);
+
+        if ("chrome152".equals(engineVersion)) {
+            // 152: 稳定类同名 hook 直接装; 混淆短名 hook走 Chrome152 符号(HomeCleaner 内部分支)
+            hookTabModelMemory(lpparam);
+            hookOnStart(lpparam);
+            HomeCleaner.hookOpenNewTab(lpparam);
+            DownloadSafetyBypass.hook(lpparam);
+            AutoInstallApk.hook(lpparam);
+            BannerController.hook(lpparam);
+            XposedBridge.log(TAG + ": v" + BuildConfig.VERSION_NAME + " hooks installed (152 path) for "
+                    + lpparam.packageName);
+            return;
+        }
+        // 145 原路径
         hookCommandLineFlags(lpparam);
         hookTabModelMemory(lpparam);
         hookOnStart(lpparam);
@@ -80,6 +99,23 @@ public class HookEntry implements IXposedHookLoadPackage {
         BannerController.hook(lpparam);
         XposedBridge.log(TAG + ": v" + BuildConfig.VERSION_NAME + " hooks installed for " + lpparam.packageName
                 + " (process " + lpparam.processName + ")");
+    }
+
+    /** 引擎版本判定: 优先 Chrome152.matches(短名类指纹), 再按 APK versionName 兜底 */
+    private static String detectEngineVersion(XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            if (Chrome152.matches(lpparam.classLoader)) {
+                return "chrome152";
+            }
+        } catch (Throwable ignored) {
+        }
+        // 145: oo4 类存在即 145 硬编码路径可用
+        try {
+            Class.forName("oo4", false, lpparam.classLoader);
+            return "chrome145";
+        } catch (Throwable ignored) {
+        }
+        return "unknown";
     }
 
     private static boolean isChromePackage(XC_LoadPackage.LoadPackageParam lpparam) {

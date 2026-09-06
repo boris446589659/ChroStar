@@ -25,6 +25,8 @@ public final class BannerController {
 
     private static final String CLS_JE7 = "je7";
     private static final String CLS_NZE = "nze";
+    private static final String CLS_JE7_152 = "ia8";
+    private static final String CLS_NZE_152 = "gig";
     private static final String CLS_OFFLINE_ITEM =
             "org.chromium.components.offline_items_collection.OfflineItem";
 
@@ -32,6 +34,10 @@ public final class BannerController {
     private static volatile boolean sPendingBanner = false;
 
     private BannerController() {
+    }
+
+    private static boolean is152() {
+        return "chrome152".equals(HookEntry.engineVersion);
     }
 
     /** 安装 hook(主进程) */
@@ -122,7 +128,7 @@ public final class BannerController {
     // ------------------------------------------------------------------
     private static void hookDownloadBanner(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
-            Class<?> je7 = XposedHelpers.findClass(CLS_JE7, lpparam.classLoader);
+            Class<?> je7 = XposedHelpers.findClass(is152() ? CLS_JE7_152 : CLS_JE7, lpparam.classLoader);
             Class<?> offlineItemCls = XposedHelpers.findClass(CLS_OFFLINE_ITEM,
                     lpparam.classLoader);
             XposedHelpers.findAndHookMethod(je7, "d", offlineItemCls,
@@ -133,7 +139,7 @@ public final class BannerController {
                             try {
                                 Object item = param.args[0];
                                 if (item == null) return;
-                                int state = XposedHelpers.getIntField(item, "m0");
+                                int state = XposedHelpers.getIntField(item, is152() ? "q0" : "m0");
                                 if (state != 2) return; // 只处理完成态
                                 String mime = (String) XposedHelpers.getObjectField(item, "f0");
                                 String name = (String) XposedHelpers.getObjectField(item, "e0");
@@ -202,7 +208,7 @@ public final class BannerController {
 
     private static void hookNzeC(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
-            Class<?> nze = XposedHelpers.findClass(CLS_NZE, lpparam.classLoader);
+            Class<?> nze = XposedHelpers.findClass(is152() ? CLS_NZE_152 : CLS_NZE, lpparam.classLoader);
             Class<?> pmCls = XposedHelpers.findClass(
                     "org.chromium.ui.modelutil.PropertyModel", lpparam.classLoader);
             XposedHelpers.findAndHookMethod(nze, "c", pmCls, boolean.class,
@@ -216,7 +222,7 @@ public final class BannerController {
 
     private static void hookNzeB(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
-            Class<?> nze = XposedHelpers.findClass(CLS_NZE, lpparam.classLoader);
+            Class<?> nze = XposedHelpers.findClass(is152() ? CLS_NZE_152 : CLS_NZE, lpparam.classLoader);
             Class<?> pmCls = XposedHelpers.findClass(
                     "org.chromium.ui.modelutil.PropertyModel", lpparam.classLoader);
             Class<?> wcCls = XposedHelpers.findClass(

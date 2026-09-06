@@ -73,6 +73,13 @@ public final class DownloadSafetyBypass {
         return m.invoke(null, args);
     }
 
+    // v2.1.0: 弹窗枚举 id 按引擎版本分发(ChromeX 152.0.7977.75 实测值, 82 需实测校准)
+    private static int idDangerous()  { return "chrome152".equals(HookEntry.engineVersion) ? 43 : 124; }
+    private static int idInsecure()   { return "chrome152".equals(HookEntry.engineVersion) ? 2 : 3; }
+    private static int idDuplicate()  { return "chrome152".equals(HookEntry.engineVersion) ? 1 : 2; }
+    private static int idPolicy()     { return "chrome152".equals(HookEntry.engineVersion) ? 47 : 129; }
+    private static int idOpen()       { return "chrome152".equals(HookEntry.engineVersion) ? 9 : 15; }
+
     /** VJO(int, long, Object) */
     private static void allowVJO(Object bridge, int id, long ptr, Object arg) {
         try {
@@ -133,7 +140,7 @@ public final class DownloadSafetyBypass {
                             try {
                                 long ptr = nativePtr(param.thisObject);
                                 String guid = (String) param.args[1];
-                                allowVJO(param.thisObject, 124, ptr, guid);
+                                allowVJO(param.thisObject, idDangerous(), ptr, guid);
                                 param.setResult(null);
                                 log("dangerous download bypassed (VJO 124)");
                             } catch (Throwable t) {
@@ -165,7 +172,7 @@ public final class DownloadSafetyBypass {
                             try {
                                 long ptr = nativePtr(param.thisObject);
                                 long downloadId = (Long) param.args[3];
-                                allowVJJZ(param.thisObject, 3, ptr, downloadId, true);
+                                allowVJJZ(param.thisObject, idInsecure(), ptr, downloadId, true);
                                 param.setResult(null);
                                 log("insecure download bypassed (VJJZ 3, true)");
                             } catch (Throwable t) {
@@ -201,7 +208,7 @@ public final class DownloadSafetyBypass {
                             try {
                                 long ptr = nativePtr(param.thisObject);
                                 long downloadId = (Long) param.args[6];
-                                allowVJJZ(param.thisObject, 2, ptr, downloadId, true);
+                                allowVJJZ(param.thisObject, idDuplicate(), ptr, downloadId, true);
                                 param.setResult(null);
                                 log("duplicate download bypassed (VJJZ 2, true)");
                             } catch (Throwable t) {
@@ -233,7 +240,7 @@ public final class DownloadSafetyBypass {
                             try {
                                 long ptr = nativePtr(param.thisObject);
                                 String guid = (String) param.args[0];
-                                allowVJO(param.thisObject, 129, ptr, guid);
+                                allowVJO(param.thisObject, idPolicy(), ptr, guid);
                                 param.setResult(null);
                                 log("policy warning download bypassed (VJO 129)");
                             } catch (Throwable t) {
@@ -318,7 +325,7 @@ public final class DownloadSafetyBypass {
                             try {
                                 long ptr = nativePtr(param.thisObject);
                                 String path = (String) param.args[1];
-                                allowVJOZ(param.thisObject, 15, ptr, path, false);
+                                allowVJOZ(param.thisObject, idOpen(), ptr, path, false);
                                 param.setResult(null);
                                 log("open dialog bypassed (VJOZ 15, false)");
                             } catch (Throwable t) {

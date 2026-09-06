@@ -222,11 +222,14 @@ public final class HomeCleaner {
     // LoadUrlParams.a = URL字符串(保留名字段), 是 NTP 且开关开时直接替换。
     // ------------------------------------------------------------------
     private static void hookTabCreator(XC_LoadPackage.LoadPackageParam lpparam) {
+        // v2.1.0: 152 用 iq4.m, 145 用 l04.l
+        boolean is152 = "chrome152".equals(HookEntry.engineVersion);
+        String creatorCls = is152 ? "iq4" : "l04";
+        String creatorMethod = is152 ? "m" : "l";
         try {
-            Class<?> l04 = XposedHelpers.findClass("l04", lpparam.classLoader);
-            // v1.10.7: hookAllMethods 覆盖所有 "l" 重载(避免 + 号走别的重载),
-            // 仅当 args[0] 是 LoadUrlParams 才处理; 并加诊断日志定位真实 URL/开关值。
-            XposedBridge.hookAllMethods(l04, "l", new XC_MethodHook() {
+            Class<?> l04 = XposedHelpers.findClass(creatorCls, lpparam.classLoader);
+            // hookAllMethods 覆盖所有重载, 仅当 args[0] 是 LoadUrlParams 才处理。
+            XposedBridge.hookAllMethods(l04, creatorMethod, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     try {
@@ -411,6 +414,26 @@ public final class HomeCleaner {
 
     /** 菜单「关闭所有标签页」原始路径: 根包 id4(O=selector,P=false,Q=false).run() → jd4.a */
     private static void menuCloseAllTabs(Object selector, ClassLoader cl) {
+        // v2.1.0: 152 无 id4(类职责已换), 直接遍历记忆模型关闭全部
+        if ("chrome152".equals(HookEntry.engineVersion)) {
+            int closed = 0;
+            for (Object model : getModels()) {
+                try {
+                    int count = modelCount(model);
+                    for (int i = count - 1; i >= 0; i--) {
+                        Object tab = modelGetTabAt(model, i);
+                        if (tab != null) {
+                            closeTab(model, tab);
+                            closed++;
+                        }
+                    }
+                } catch (Throwable t) {
+                    XposedBridge.log(HookEntry.TAG + ": [152] close model failed -> " + t);
+                }
+            }
+            XposedBridge.log(HookEntry.TAG + ": [152] close-all done, closed=" + closed);
+            return;
+        }
         try {
             Class<?> id4Cls = Class.forName(CLS_MENU_RUNNABLE, false, cl);
             Object r;
@@ -436,6 +459,11 @@ public final class HomeCleaner {
                                         final int attempt) {
         try {
             if (!HookEntry.readPrefBoolean(HookEntry.KEY_CLEAR_TABS, true)) {
+                return;
+            }
+            // v2.1.0: 152 无 VIOOOOOOO 等价 selector(通道重构), 语义降级跳过; 145 不受影响
+            if ("chrome152".equals(HookEntry.engineVersion)) {
+                XposedBridge.log(HookEntry.TAG + ": 152 clearClosedTabs skipped (semantic channel changed)");
                 return;
             }
             int period = 4; // 全部时间(v1.9.5 起固定, 原 mapDaysToPeriod(0)=4)
