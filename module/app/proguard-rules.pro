@@ -13,3 +13,7 @@
 
 # v2.1.0: Chrome152 符号表常量与 matches 反射被 R8 误裁
 -keep class io.github.ylw6669.chrostar.Chrome152 { *; }
+
+# v2.2.0: 新功能类(反射字段名/跨类调用)
+-keep class io.github.ylw6669.chrostar.OverwriteAndAutoOpen { *; }
+-keep class io.github.ylw6669.chrostar.LocationAndDiagnostics { *; }

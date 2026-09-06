@@ -57,6 +57,20 @@ public class HookEntry implements IXposedHookLoadPackage {
     public static final String KEY_BANNER_ALL_TOAST = "banner_all_toast";
     public static final String KEY_HIDE_TRANSLATE_BANNER = "hide_translate_banner";
     public static final String KEY_NEWTAB_HOME = "newtab_home";
+    // v2.2.0 新功能键
+    public static final String KEY_OVERWRITE_DUPLICATE = "overwrite_duplicate";
+    public static final String KEY_AUTO_OPEN_EXT = "auto_open_ext";
+    public static final String KEY_AUTO_OPEN_PDF = "auto_open_pdf";
+    public static final String KEY_AUTO_OPEN_ARCHIVE = "auto_open_archive";
+    public static final String KEY_AUTO_OPEN_DOCUMENT = "auto_open_document";
+    public static final String KEY_AUTO_OPEN_SPREADSHEET = "auto_open_spreadsheet";
+    public static final String KEY_AUTO_OPEN_PRESENTATION = "auto_open_presentation";
+    public static final String KEY_AUTO_OPEN_TEXT = "auto_open_text";
+    public static final String KEY_AUTO_OPEN_IMAGE = "auto_open_image";
+    public static final String KEY_AUTO_OPEN_VIDEO = "auto_open_video";
+    public static final String KEY_AUTO_OPEN_AUDIO = "auto_open_audio";
+    public static final String KEY_AUTO_OPEN_EBOOK = "auto_open_ebook";
+    public static final String KEY_DIAGNOSTIC_MODE = "diagnostic_mode";
 
     private static final String CLS_CHROME_TABBED_ACTIVITY =
             "org.chromium.chrome.browser.ChromeTabbedActivity";
@@ -85,6 +99,8 @@ public class HookEntry implements IXposedHookLoadPackage {
             DownloadSafetyBypass.hook(lpparam);
             AutoInstallApk.hook(lpparam);
             BannerController.hook(lpparam);
+            LocationAndDiagnostics.hookLocationPrefSource(lpparam);
+            LocationAndDiagnostics.noteHook("152 path hooks", true);
             XposedBridge.log(TAG + ": v" + BuildConfig.VERSION_NAME + " hooks installed (152 path) for "
                     + lpparam.packageName);
             return;
@@ -97,6 +113,8 @@ public class HookEntry implements IXposedHookLoadPackage {
         DownloadSafetyBypass.hook(lpparam);
         AutoInstallApk.hook(lpparam);
         BannerController.hook(lpparam);
+        LocationAndDiagnostics.hookLocationPrefSource(lpparam);
+        LocationAndDiagnostics.noteHook("145 path hooks", true);
         XposedBridge.log(TAG + ": v" + BuildConfig.VERSION_NAME + " hooks installed for " + lpparam.packageName
                 + " (process " + lpparam.processName + ")");
     }

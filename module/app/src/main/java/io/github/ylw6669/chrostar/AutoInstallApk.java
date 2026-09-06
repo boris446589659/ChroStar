@@ -57,6 +57,7 @@ public final class AutoInstallApk {
 
     /** 安装 hook(主进程) */
     public static void hook(XC_LoadPackage.LoadPackageParam lpparam) {
+        OverwriteAndAutoOpen.hookOverwriteDuplicate(lpparam);
         if ("chrome152".equals(HookEntry.engineVersion)) {
             hook152(lpparam);
             return; // 152 短名(c9o/zkg)不同, 独立路径
@@ -97,7 +98,7 @@ public final class AutoInstallApk {
                                 String mime = (String) XposedHelpers.getObjectField(info, "c");
                                 String path = (String) XposedHelpers.getObjectField(info, "e");
                                 String name = (String) XposedHelpers.getObjectField(info, "g");
-                                if (!HookEntry.isApk(mime, name)) return;
+                                if (!OverwriteAndAutoOpen.shouldAutoOpen(mime, name)) return;
                                 final String fileName = (path != null && path.contains("/"))
                                         ? new File(path).getName() : path;
                                 final String finalName = (name != null && !name.isEmpty())
@@ -158,7 +159,7 @@ public final class AutoInstallApk {
                                 if (state != 1 && state != 2) return;
                                 String mime = (String) XposedHelpers.getObjectField(item, "f0");
                                 String name = (String) XposedHelpers.getObjectField(item, "e0");
-                                if (!HookEntry.isApk(mime, name)) return;
+                                if (!OverwriteAndAutoOpen.shouldAutoOpen(mime, name)) return;
                                 String path = (String) XposedHelpers.getObjectField(item, "P");
                                 if (path == null) path = "";
                                 // 关键修复: OfflineItem.P 只有正式文件名, 且此时文件可能还在
@@ -220,7 +221,7 @@ public final class AutoInstallApk {
                                 if (qe7 == null) return;
                                 String mime = (String) XposedHelpers.getObjectField(qe7, "b");
                                 String name = (String) XposedHelpers.getObjectField(qe7, "a");
-                                if (!HookEntry.isApk(mime, name)) return;
+                                if (!OverwriteAndAutoOpen.shouldAutoOpen(mime, name)) return;
                                 String path = (String) XposedHelpers.getObjectField(qe7, "i");
                                 if (path == null) path = "";
                                 String abs = resolveRealPath(path, name,
@@ -274,7 +275,7 @@ public final class AutoInstallApk {
                                 String mime = (String) XposedHelpers.getObjectField(info, "c");
                                 String path = (String) XposedHelpers.getObjectField(info, "e");
                                 String name = (String) XposedHelpers.getObjectField(info, "g");
-                                if (!HookEntry.isApk(mime, name)) return;
+                                if (!OverwriteAndAutoOpen.shouldAutoOpen(mime, name)) return;
                                 // 真机日志证实: onDownloadCompleted 是下载完成时确定触发的回调,
                                 // 但此时文件可能还在 Chrome 私有临时目录, 尚未复制到公共目录,
                                 // 因此改为后台轮询等待文件落盘后再安装。
@@ -655,7 +656,7 @@ public final class AutoInstallApk {
                                 String path = tryStringField(item, "P", "Q", "R", "S", "U", "W");
                                 String name = tryStringField(item, "e0", "T", "f0", "U");
                                 String mime = tryStringField(item, "f0", "c0", "d0");
-                                if (!HookEntry.isApk(mime, name)) return;
+                                if (!OverwriteAndAutoOpen.shouldAutoOpen(mime, name)) return;
                                 XposedBridge.log(HookEntry.TAG + ": [152] apk download completed: " + name);
                                 installApk152(path, name, lpparam.classLoader);
                             } catch (Throwable t) {

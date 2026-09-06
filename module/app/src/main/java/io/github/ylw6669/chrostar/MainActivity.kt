@@ -60,6 +60,18 @@ private fun SettingsScreen(prefs: SharedPreferences) {
     var bannerApkToast by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_BANNER_APK_TOAST, true)) }
     var bannerAllToast by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_BANNER_ALL_TOAST, false)) }
     var hideTranslateBanner by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_HIDE_TRANSLATE_BANNER, true)) }
+    var overwriteDuplicate by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_OVERWRITE_DUPLICATE, false)) }
+    var autoOpenExt by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_AUTO_OPEN_EXT, false)) }
+    var autoOpenPdf by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_AUTO_OPEN_PDF, false)) }
+    var autoOpenArchive by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_AUTO_OPEN_ARCHIVE, false)) }
+    var autoOpenDoc by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_AUTO_OPEN_DOCUMENT, false)) }
+    var autoOpenSheet by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_AUTO_OPEN_SPREADSHEET, false)) }
+    var autoOpenSlide by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_AUTO_OPEN_PRESENTATION, false)) }
+    var autoOpenText by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_AUTO_OPEN_TEXT, false)) }
+    var autoOpenImage by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_AUTO_OPEN_IMAGE, false)) }
+    var autoOpenVideo by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_AUTO_OPEN_VIDEO, false)) }
+    var autoOpenAudio by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_AUTO_OPEN_AUDIO, false)) }
+    var autoOpenEbook by remember { mutableStateOf(prefs.getBoolean(HookEntry.KEY_AUTO_OPEN_EBOOK, false)) }
 
     fun save() {
         prefs.edit()
@@ -77,6 +89,18 @@ private fun SettingsScreen(prefs: SharedPreferences) {
             .putBoolean(HookEntry.KEY_BANNER_APK_TOAST, bannerApkToast)
             .putBoolean(HookEntry.KEY_BANNER_ALL_TOAST, bannerAllToast)
             .putBoolean(HookEntry.KEY_HIDE_TRANSLATE_BANNER, hideTranslateBanner)
+            .putBoolean(HookEntry.KEY_OVERWRITE_DUPLICATE, overwriteDuplicate)
+            .putBoolean(HookEntry.KEY_AUTO_OPEN_EXT, autoOpenExt)
+            .putBoolean(HookEntry.KEY_AUTO_OPEN_PDF, autoOpenPdf)
+            .putBoolean(HookEntry.KEY_AUTO_OPEN_ARCHIVE, autoOpenArchive)
+            .putBoolean(HookEntry.KEY_AUTO_OPEN_DOCUMENT, autoOpenDoc)
+            .putBoolean(HookEntry.KEY_AUTO_OPEN_SPREADSHEET, autoOpenSheet)
+            .putBoolean(HookEntry.KEY_AUTO_OPEN_PRESENTATION, autoOpenSlide)
+            .putBoolean(HookEntry.KEY_AUTO_OPEN_TEXT, autoOpenText)
+            .putBoolean(HookEntry.KEY_AUTO_OPEN_IMAGE, autoOpenImage)
+            .putBoolean(HookEntry.KEY_AUTO_OPEN_VIDEO, autoOpenVideo)
+            .putBoolean(HookEntry.KEY_AUTO_OPEN_AUDIO, autoOpenAudio)
+            .putBoolean(HookEntry.KEY_AUTO_OPEN_EBOOK, autoOpenEbook)
             .commit()
     }
 
@@ -174,6 +198,71 @@ private fun SettingsScreen(prefs: SharedPreferences) {
                     checked = clearTabs,
                     onCheckedChange = { clearTabs = it; save() }
                 )
+            }
+
+            // ── 下载增强(v2.2.0) ──
+            SmallTitle(text = "下载增强")
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 12.dp)
+            ) {
+                SwitchPreference(
+                    title = "同名下载保留原文件",
+                    summary = "重复下载时不生成 name(1).ext, 直接覆盖且旧文件不保留",
+                    checked = overwriteDuplicate,
+                    onCheckedChange = { overwriteDuplicate = it; save() }
+                )
+                SwitchPreference(
+                    title = "下载完成自动打开(扩展类型)",
+                    summary = "APK 之外, 按类型在下载完成后自动打开",
+                    checked = autoOpenExt,
+                    onCheckedChange = { autoOpenExt = it; save() }
+                )
+                if (autoOpenExt) {
+                    SwitchPreference(
+                        title = "PDF 文档",
+                        checked = autoOpenPdf,
+                        onCheckedChange = { autoOpenPdf = it; save() }
+                    )
+                    SwitchPreference(
+                        title = "压缩包 (zip/7z/rar)",
+                        checked = autoOpenArchive,
+                        onCheckedChange = { autoOpenArchive = it; save() }
+                    )
+                    SwitchPreference(
+                        title = "Office 文档 (doc/xls/ppt)",
+                        checked = autoOpenDoc || autoOpenSheet || autoOpenSlide,
+                        onCheckedChange = {
+                            autoOpenDoc = it; autoOpenSheet = it; autoOpenSlide = it; save()
+                        }
+                    )
+                    SwitchPreference(
+                        title = "文本文件",
+                        checked = autoOpenText,
+                        onCheckedChange = { autoOpenText = it; save() }
+                    )
+                    SwitchPreference(
+                        title = "图片",
+                        checked = autoOpenImage,
+                        onCheckedChange = { autoOpenImage = it; save() }
+                    )
+                    SwitchPreference(
+                        title = "视频",
+                        checked = autoOpenVideo,
+                        onCheckedChange = { autoOpenVideo = it; save() }
+                    )
+                    SwitchPreference(
+                        title = "音频",
+                        checked = autoOpenAudio,
+                        onCheckedChange = { autoOpenAudio = it; save() }
+                    )
+                    SwitchPreference(
+                        title = "电子书 (epub/mobi)",
+                        checked = autoOpenEbook,
+                        onCheckedChange = { autoOpenEbook = it; save() }
+                    )
+                }
             }
 
             // ── 横幅 ──

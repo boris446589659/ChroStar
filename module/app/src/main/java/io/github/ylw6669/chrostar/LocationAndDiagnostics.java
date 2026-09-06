@@ -1,0 +1,105 @@
+// ChroStar v2.2.0 — 功能 3+4: 下载位置 DONT_SHOW 语义增强 + 诊断导出
+package io.github.ylw6669.chrostar;
+
+import android.content.Context;
+
+import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XposedBridge;
+import de.robv.android.xposed.XposedHelpers;
+import de.robv.android.xposed.callbacks.XC_LoadPackage;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
+public final class LocationAndDiagnostics {
+
+    private static final StringBuilder sHookReport = new StringBuilder();
+
+    private LocationAndDiagnostics() {}
+
+    static void report(String line) {
+        synchronized (sHookReport) {
+            sHookReport.append(line).append('\n');
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 功能 3: bypass_location 增强 — 源头 preference 层
+    // Chrome 的"下载前询问保存位置"由 PrefService kPromptForDownload 控制;
+    // hook PrefService.getBoolean(String) 当 key 命中时直接返回 false。
+    // PrefService 是公开类(org.chromium.components.prefs.PrefService), 145/152 通用。
+    // 注: 不落盘 Chrome 用户设置, 仅 hook 运行时读取, 关闭开关即恢复原行为。
+    // ------------------------------------------------------------------
+    public static void hookLocationPrefSource(XC_LoadPackage.LoadPackageParam lpparam) {
+        if (!HookEntry.readPrefBoolean(HookEntry.KEY_BYPASS_LOCATION, true)) {
+            return;
+        }
+        try {
+            Class<?> prefService = XposedHelpers.findClass(
+                    "org.chromium.components.prefs.PrefService", lpparam.classLoader);
+            XposedBridge.hookAllMethods(prefService, "getBoolean", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        Object key = param.args.length > 0 ? param.args[0] : null;
+                        if (key instanceof String
+                                && ((String) key).contains("prompt_for_download")) {
+                            param.setResult(Boolean.FALSE);
+                            report("location prompt pref forced false");
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+            });
+            XposedBridge.log(HookEntry.TAG + ": location prompt source bound (PrefService.getBoolean)");
+        } catch (Throwable t) {
+            XposedBridge.log(HookEntry.TAG + ": location pref hook failed -> " + t);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 功能 4: 诊断导出
+    // 由设置页调用(static 入口), 收集引擎/hook/能力信息写 JSON 到 Download 目录。
+    // ------------------------------------------------------------------
+    public static String exportDiagnostics(Context ctx) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\n");
+        sb.append("  \"module\": \"ChroStar\",\n");
+        sb.append("  \"moduleVersion\": \"").append("2.2.0").append("\",\n");
+        sb.append("  \"engineVersion\": \"").append(HookEntry.engineVersion).append("\",\n");
+        sb.append("  \"targetPackage\": \"").append(ctx.getPackageName()).append("\",\n");
+        sb.append("  \"timestamp\": \"").append(
+                new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date())).append("\",\n");
+        sb.append("  \"hooks\": [\n");
+        synchronized (sHookReport) {
+            String[] lines = sHookReport.toString().split("\n");
+            for (int i = 0; i < lines.length; i++) {
+                sb.append("    \"").append(lines[i].replace("\"", "'")).append('"');
+                if (i < lines.length - 1) sb.append(',');
+                sb.append('\n');
+            }
+        }
+        sb.append("  ]\n}\n");
+        try {
+            File dir = new File("/sdcard/Download");
+            if (!dir.exists()) dir = ctx.getExternalFilesDir(null);
+            File out = new File(dir, "chrostar-diagnostics.json");
+            FileWriter w = new FileWriter(out);
+            w.write(sb.toString());
+            w.close();
+            XposedBridge.log(HookEntry.TAG + ": diagnostics exported -> " + out.getAbsolutePath());
+            return out.getAbsolutePath();
+        } catch (Throwable t) {
+            XposedBridge.log(HookEntry.TAG + ": diagnostics export failed -> " + t);
+            return null;
+        }
+    }
+
+    // hook 挂载报告(供诊断): 各 hook 安装成功时由 HookEntry 调
+    public static void noteHook(String name, boolean ok) {
+        report((ok ? "[OK] " : "[FAIL] ") + name);
+    }
+}
