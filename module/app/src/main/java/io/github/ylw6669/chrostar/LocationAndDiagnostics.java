@@ -40,7 +40,9 @@ public final class LocationAndDiagnostics {
         try {
             Class<?> prefService = XposedHelpers.findClass(
                     "org.chromium.components.prefs.PrefService", lpparam.classLoader);
-            XposedBridge.hookAllMethods(prefService, "getBoolean", new XC_MethodHook() {
+            // v2.2.0 修正: PrefService 无公开 getBoolean — 145/152 均为混淆名 b(String)
+            // (方法体 N.ZJO(33, ptr, str), ZJ 前缀=boolean 返回, 与 f(String,boolean)=setBoolean 对称)
+            XposedBridge.hookAllMethods(prefService, "b", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     try {

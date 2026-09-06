@@ -128,11 +128,17 @@ public final class DownloadSafetyBypass {
         try {
             Class<?> windowClass = XposedHelpers.findClass(
                     "org.chromium.ui.base.WindowAndroid", lpparam.classLoader);
+            // v2.2.1: 152 的 showDialog 多一个 boolean 尾参(6→7参)
+            boolean is152 = "chrome152".equals(HookEntry.engineVersion);
+            Object[] paramTypes = is152
+                    ? new Object[]{windowClass, String.class, String.class,
+                                   long.class, String.class, int.class, boolean.class}
+                    : new Object[]{windowClass, String.class, String.class,
+                                   long.class, String.class, int.class};
             XposedHelpers.findAndHookMethod(
                     "org.chromium.chrome.browser.download.DangerousDownloadDialogBridge",
                     lpparam.classLoader, "showDialog",
-                    windowClass, String.class, String.class,
-                    long.class, String.class, int.class,
+                    paramTypes,
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
@@ -204,6 +210,30 @@ public final class DownloadSafetyBypass {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
+                            // v2.2.0: 同名覆盖开关开启时 — 先备份旧文件, 再自动确认(不弹窗)
+                            if (!bypassOff(HookEntry.KEY_BYPASS_DUPLICATE)
+                                    && HookEntry.readPrefBoolean(
+                                        HookEntry.KEY_OVERWRITE_DUPLICATE, false)) {
+                                try {
+                                    if (param.args.length > 2 && param.args[1] instanceof String) {
+                                        OverwriteAndAutoOpen.armBackup(
+                                                new Object[]{param.args[1]});
+                                    }
+                                    if (param.args.length > 2 && param.args[2] instanceof String) {
+                                        OverwriteAndAutoOpen.armBackup(
+                                                new Object[]{param.args[2]});
+                                    }
+                                    long ptr = nativePtr(param.thisObject);
+                                    long downloadId = (Long) param.args[6];
+                                    allowVJJZ(param.thisObject, idDuplicate(), ptr, downloadId, true);
+                                    param.setResult(null);
+                                    log("duplicate download: backup armed + auto-confirmed");
+                                    return;
+                                } catch (Throwable t) {
+                                    err("duplicate overwrite", t);
+                                    // 失败则回落到普通绕过
+                                }
+                            }
                             if (bypassOff(HookEntry.KEY_BYPASS_DUPLICATE)) return;
                             try {
                                 long ptr = nativePtr(param.thisObject);

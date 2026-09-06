@@ -653,9 +653,10 @@ public final class AutoInstallApk {
                                     return;
                                 }
                                 // 152: OfflineItem 路径/名字段名变化, 用通用反射尝试常见字段
-                                String path = tryStringField(item, "P", "Q", "R", "S", "U", "W");
-                                String name = tryStringField(item, "e0", "T", "f0", "U");
-                                String mime = tryStringField(item, "f0", "c0", "d0");
+                                // 152 字段(DownloadInfo.a 官方转换实证): path=i0, name=T, mime=j0
+                                String path = tryStringField(item, "i0");
+                                String name = tryStringField(item, "T", "e0");
+                                String mime = tryStringField(item, "j0", "f0");
                                 if (!OverwriteAndAutoOpen.shouldAutoOpen(mime, name)) return;
                                 XposedBridge.log(HookEntry.TAG + ": [152] apk download completed: " + name);
                                 installApk152(path, name, lpparam.classLoader);

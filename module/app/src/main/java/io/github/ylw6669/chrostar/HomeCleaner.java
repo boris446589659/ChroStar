@@ -29,9 +29,9 @@ import java.util.List;
  */
 public final class HomeCleaner {
 
-    private static final String CLS_SELECTOR = "tuo";   // TabModelSelector(根包)
-    private static final String CLS_HOME_MGR = "jza";   // HomepageManager(根包)
-    private static final String CLS_MENU_RUNNABLE = "id4"; // 菜单关闭 Runnable(根包)
+    private static String CLS_SELECTOR() { return "chrome152".equals(HookEntry.engineVersion) ? "k3r" : "tuo"; }   // TabModelSelector(根包)
+    private static String CLS_HOME_MGR() { return "chrome152".equals(HookEntry.engineVersion) ? "w5c" : "jza"; }   // HomepageManager(根包)
+    private static String CLS_MENU_RUNNABLE() { return "chrome152".equals(HookEntry.engineVersion) ? "q35" : "id4"; } // 菜单关闭 Runnable(根包)
     private static final String CLS_TAB_MODEL_JNI_BRIDGE =
             "org.chromium.chrome.browser.tabmodel.TabModelJniBridge";
     private static final String CLS_GURL = "org.chromium.url.GURL";
@@ -327,7 +327,7 @@ public final class HomeCleaner {
     /** 找 TabModelSelector(根包 tuo): 精确 Class.forName + activity 字段扫描 */
     private static Object findTabModelSelector(Activity activity) {
         try {
-            Class<?> selectorClass = Class.forName(CLS_SELECTOR, false,
+            Class<?> selectorClass = Class.forName(CLS_SELECTOR(), false,
                     activity.getClass().getClassLoader());
             if (sSelectorField != null) {
                 try {
@@ -395,7 +395,7 @@ public final class HomeCleaner {
     private static String resolveHomeUrl(ClassLoader cl) {
         // v1.9.5: 自定义主页已删除, 直接跟随 Chrome 设置主页 / 默认新标签页
         try {
-            Class<?> jzaClass = Class.forName(CLS_HOME_MGR, false, cl);
+            Class<?> jzaClass = Class.forName(CLS_HOME_MGR(), false, cl);
             Object singleton = XposedHelpers.callStaticMethod(jzaClass, "d");
             if (singleton != null) {
                 Object gurl = XposedHelpers.callMethod(singleton, "b", Boolean.FALSE);
@@ -435,7 +435,7 @@ public final class HomeCleaner {
             return;
         }
         try {
-            Class<?> id4Cls = Class.forName(CLS_MENU_RUNNABLE, false, cl);
+            Class<?> id4Cls = Class.forName(CLS_MENU_RUNNABLE(), false, cl);
             Object r;
             try {
                 r = id4Cls.getConstructor().newInstance();

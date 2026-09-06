@@ -34,44 +34,25 @@ public final class OverwriteAndAutoOpen {
     // hook DuplicateDownloadDialogBridge(公开类, 145/152 同名) 的确认回调,
     // 在用户选择"下载"(allow)时, 把旧文件移到 .chrostar-bak, 让 Chrome 拿回原名。
     // ------------------------------------------------------------------
-    public static void hookOverwriteDuplicate(XC_LoadPackage.LoadPackageParam lpparam) {
-        if (!HookEntry.readPrefBoolean(HookEntry.KEY_OVERWRITE_DUPLICATE, false)) {
-            return;
-        }
-        try {
-            Class<?> bridge = XposedHelpers.findClass(
-                    "org.chromium.chrome.browser.download.DuplicateDownloadDialogBridge",
-                    lpparam.classLoader);
-            // 145/152: 静态 native 前端 VJJZ(2, ...) 由 hookDuplicate 已拦截"弹窗"分支;
-            // 这里 hook 的是桥的 Java 层确认入口(公开方法 onConfirm/accept 兼容取法):
-            XposedBridge.hookAllMethods(bridge, "onConfirm", new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    armBackup(param.args);
-                }
-            });
-            XposedBridge.hookAllMethods(bridge, "accept", new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    armBackup(param.args);
-                }
-            });
-            XposedBridge.log(HookEntry.TAG + ": overwrite-duplicate armed (onConfirm/accept)");
-        } catch (Throwable t) {
-            XposedBridge.log(HookEntry.TAG + ": overwrite-duplicate hook failed -> " + t);
-        }
+        public static void hookOverwriteDuplicate(XC_LoadPackage.LoadPackageParam lpparam) {
+        // v2.2.0: 备份动作由 DownloadSafetyBypass.hookDuplicate 的确认点调用 armBackup()。
+        // 这里仅做 hook 安装标记, 保证 LSPosed 日志可见。
+        XposedBridge.log(HookEntry.TAG + ": overwrite-duplicate armed (via duplicate dialog confirm)");
     }
 
     /** 从确认回调参数中提取目标文件路径, 做事务备份 */
-    private static void armBackup(Object[] args) {
+    public static void armBackup(Object[] args) {
         try {
             for (Object a : args) {
                 if (!(a instanceof String)) continue;
                 String s = (String) a;
-                if (!s.toLowerCase().endsWith(".apk") && !s.contains("/")) continue;
+                if (!s.contains("/")) continue;
                 File target = new File(s);
                 File parent = target.getParentFile();
-                if (parent == null || !parent.exists()) continue;
+                if (parent == null) continue;
+                // 目录白名单: 仅公共 Download / Chrome 下载目录, 避免误操作系统目录
+                String pl = parent.getAbsolutePath().toLowerCase();
+                if (!(pl.contains("/download") || pl.contains("download"))) continue;
                 // 只处理"已存在同名旧文件"的场景(= 用户看到了重复下载确认)
                 if (!target.exists()) continue;
                 File bak = new File(parent, target.getName() + BAK_SUFFIX);
@@ -92,26 +73,42 @@ public final class OverwriteAndAutoOpen {
 
     /** 60 秒后: 新文件已落地 -> 删备份; 未落地 -> 还原备份 */
     private static void scheduleRestore(final String targetPath, final String backupPath) {
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            try {
-                File target = new File(targetPath);
-                File backup = new File(backupPath);
-                if (target.exists() && target.length() > 0) {
-                    if (backup.delete()) {
-                        XposedBridge.log(HookEntry.TAG + ": same-name overwrite committed, backup removed");
+        // 轮询式: 大文件下载可能超过 60s, 每 10s 检查一次, 最多 12 次(2 分钟)
+        final Handler h = new Handler(Looper.getMainLooper());
+        final int[] attempts = {0};
+        h.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    attempts[0]++;
+                    File target = new File(targetPath);
+                    File backup = new File(backupPath);
+                    if (target.exists() && target.length() > 0) {
+                        if (backup.delete()) {
+                            XposedBridge.log(HookEntry.TAG
+                                    + ": same-name overwrite committed, backup removed");
+                        }
+                        synchronized (sLock) { sBackups.remove(targetPath); }
+                        return;
                     }
-                } else if (backup.exists()) {
-                    if (backup.renameTo(target)) {
-                        XposedBridge.log(HookEntry.TAG + ": same-name backup restored (download missing)");
+                    if (!backup.exists()) {
+                        synchronized (sLock) { sBackups.remove(targetPath); }
+                        return; // 备份已不在, 放弃
                     }
+                    if (attempts[0] >= 12) {
+                        if (backup.renameTo(target)) {
+                            XposedBridge.log(HookEntry.TAG
+                                    + ": same-name backup restored (download timeout)");
+                        }
+                        synchronized (sLock) { sBackups.remove(targetPath); }
+                        return;
+                    }
+                    h.postDelayed(this, 10_000L);
+                } catch (Throwable t) {
+                    XposedBridge.log(HookEntry.TAG + ": restore error -> " + t);
                 }
-                synchronized (sLock) {
-                    sBackups.remove(targetPath);
-                }
-            } catch (Throwable t) {
-                XposedBridge.log(HookEntry.TAG + ": restore error -> " + t);
             }
-        }, RESTORE_DELAY_MS);
+        }, 10_000L);
     }
 
     // ------------------------------------------------------------------
