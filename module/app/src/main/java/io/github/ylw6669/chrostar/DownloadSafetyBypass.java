@@ -130,6 +130,28 @@ public final class DownloadSafetyBypass {
                     "org.chromium.ui.base.WindowAndroid", lpparam.classLoader);
             // v2.2.1: 152 的 showDialog 多一个 boolean 尾参(6→7参)
             boolean is152 = "chrome152".equals(HookEntry.engineVersion);
+            if (is152) {
+                Class<?> bridge = XposedHelpers.findClass(
+                        "org.chromium.chrome.browser.download.DangerousDownloadDialogBridge",
+                        lpparam.classLoader);
+                XposedBridge.hookAllMethods(bridge, "showDialog", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if (bypassOff(HookEntry.KEY_BYPASS_DANGEROUS)) return;
+                        try {
+                            long ptr = nativePtr(param.thisObject);
+                            String guid = param.args.length > 1 ? (String) param.args[1] : null;
+                            allowVJO(param.thisObject, idDangerous(), ptr, guid);
+                            param.setResult(null);
+                            log("dangerous download bypassed (VJO " + idDangerous() + ")");
+                        } catch (Throwable t) {
+                            err("dangerous", t);
+                        }
+                    }
+                });
+                log("hooked DangerousDownloadDialogBridge.showDialog (all overloads)");
+                return;
+            }
             Object[] paramTypes = is152
                     ? new Object[]{windowClass, String.class, String.class,
                                    long.class, String.class, int.class, boolean.class}

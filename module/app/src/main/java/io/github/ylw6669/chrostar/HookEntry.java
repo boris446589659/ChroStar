@@ -1,6 +1,10 @@
 package io.github.ylw6669.chrostar;
 
 import android.app.Activity;
+import android.app.Application;
+import android.app.Instrumentation;
+import android.content.Context;
+import android.os.Bundle;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
@@ -13,6 +17,7 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.Set;
 import java.util.WeakHashMap;
@@ -80,6 +85,8 @@ public class HookEntry implements IXposedHookLoadPackage {
     private static final Set<Activity> sColdHandled =
             Collections.newSetFromMap(new WeakHashMap<Activity, Boolean>());
 
+    private static volatile boolean sLateHooksInstalled;
+
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
         if (!isChromePackage(lpparam)) {
@@ -90,6 +97,21 @@ public class HookEntry implements IXposedHookLoadPackage {
         }
         engineVersion = detectEngineVersion(lpparam);
         XposedBridge.log(TAG + ": engine=" + engineVersion);
+
+        // Chrome 152 core dex lives in split_chrome.apk and is unavailable at
+        // the initial load-package callback. Install bootstrap hooks first and
+        // defer all Chrome hooks until the split ClassLoader is available.
+        hookApplicationAttach(lpparam);
+        hookSplitContextCreation(lpparam);
+        hookActivityCreate(lpparam);
+        if ("unknown".equals(engineVersion)) {
+            XposedBridge.log(TAG + ": waiting for Chrome split ClassLoader");
+            return;
+        }
+        installEngineHooks(lpparam);
+    }
+
+    private static void installEngineHooks(XC_LoadPackage.LoadPackageParam lpparam) {
 
         if ("chrome152".equals(engineVersion)) {
             // 152: 稳定类同名 hook 直接装; 混淆短名 hook走 Chrome152 符号(HomeCleaner 内部分支)
@@ -117,6 +139,83 @@ public class HookEntry implements IXposedHookLoadPackage {
         LocationAndDiagnostics.noteHook("145 path hooks", true);
         XposedBridge.log(TAG + ": v" + BuildConfig.VERSION_NAME + " hooks installed for " + lpparam.packageName
                 + " (process " + lpparam.processName + ")");
+    }
+
+    private static void hookSplitContextCreation(final XC_LoadPackage.LoadPackageParam lp) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                    "org.chromium.chrome.browser.base.SplitChromeApplication", lp.classLoader,
+                    "createContextForSplit", String.class, new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam p) {
+                            try {
+                                if (!"chrome".equals(String.valueOf(p.args[0]))) return;
+                                Object result = p.getResult();
+                                if (!(result instanceof Context)) return;
+                                ClassLoader cl = ((Context) result).getClassLoader();
+                                installLateHooks(lp, cl, "createContextForSplit");
+                            } catch (Throwable t) {
+                                XposedBridge.log(TAG + ": split context hook error -> " + t);
+                            }
+                        }
+                    });
+            XposedBridge.log(TAG + ": hooked SplitChromeApplication.createContextForSplit");
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + ": split context hook unavailable -> " + t);
+        }
+    }
+
+    private static void hookApplicationAttach(final XC_LoadPackage.LoadPackageParam lp) {
+        try {
+            XposedHelpers.findAndHookMethod(Application.class, "attach", Context.class,
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam p) {
+                            try {
+                                Context c = (Context) p.args[0];
+                                if (c != null) installLateHooks(lp, c.getClassLoader(), "attach");
+                            } catch (Throwable t) {
+                                XposedBridge.log(TAG + ": attach split retry error -> " + t);
+                            }
+                        }
+                    });
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + ": Application.attach hook unavailable -> " + t);
+        }
+    }
+
+    private static void hookActivityCreate(final XC_LoadPackage.LoadPackageParam lp) {
+        try {
+            XposedHelpers.findAndHookMethod(Instrumentation.class, "callActivityOnCreate",
+                    Activity.class, Bundle.class, new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam p) {
+                            try {
+                                Activity a = (Activity) p.args[0];
+                                if (a != null && "com.android.chrome".equals(a.getPackageName())) {
+                                    installLateHooks(lp, a.getClass().getClassLoader(), "activity");
+                                }
+                            } catch (Throwable t) {
+                                XposedBridge.log(TAG + ": activity split retry error -> " + t);
+                            }
+                        }
+                    });
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + ": Instrumentation hook unavailable -> " + t);
+        }
+    }
+
+    private static synchronized void installLateHooks(XC_LoadPackage.LoadPackageParam lp,
+                                                       ClassLoader loader, String source) {
+        if (sLateHooksInstalled || loader == null) return;
+        try {
+            Class.forName(CLS_CHROME_TABBED_ACTIVITY, false, loader);
+            Class.forName(CLS_TAB_MODEL_JNI_BRIDGE, false, loader);
+        } catch (Throwable t) {
+            return;
+        }
+        lp.classLoader = loader;
+        engineVersion = detectEngineVersion(lp);
+        sLateHooksInstalled = true;
+        XposedBridge.log(TAG + ": installing late hooks from " + source + " engine=" + engineVersion);
+        installEngineHooks(lp);
     }
 
     /** 引擎版本判定: 优先 Chrome152.matches(短名类指纹), 再按 APK versionName 兜底 */
@@ -192,16 +291,23 @@ public class HookEntry implements IXposedHookLoadPackage {
         try {
             Class<?> bridge = Class.forName(CLS_TAB_MODEL_JNI_BRIDGE, false, lpparam.classLoader);
             Method target = null;
+            try {
+                Class<?> implementation = Class.forName("qiq", false, lpparam.classLoader);
+                target = implementation.getDeclaredMethod("getCount");
+            } catch (Throwable ignored) {
+            }
+            try {
+                if (target == null) {
+                    Method candidate = bridge.getDeclaredMethod("getCount");
+                    if (!Modifier.isAbstract(candidate.getModifiers())) target = candidate;
+                }
+            } catch (Throwable ignored) {
+            }
             for (Method m : XposedHelpers.findMethodsByExactParameters(bridge, int.class)) {
-                if (m.getParameterTypes().length == 0 && !m.getName().equals("getCount")) {
+                if (target == null && m.getParameterTypes().length == 0
+                        && !Modifier.isAbstract(m.getModifiers())) {
                     target = m;
                     break;
-                }
-            }
-            if (target == null) {
-                try {
-                    target = bridge.getDeclaredMethod("getCount");
-                } catch (Throwable ignored) {
                 }
             }
             if (target == null) {
@@ -219,7 +325,7 @@ public class HookEntry implements IXposedHookLoadPackage {
                     }
                 }
             });
-            XposedBridge.log(TAG + ": hooked TabModelJniBridge#" + target.getName()
+            XposedBridge.log(TAG + ": hooked " + target.getDeclaringClass().getName() + "#" + target.getName()
                     + "() [model memory]");
         } catch (Throwable t) {
             XposedBridge.log(TAG + ": hook TabModel memory failed -> " + t);
